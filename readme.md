@@ -27,5 +27,5 @@ Follow these commands to build and install **Bandit Reader** on your device:
 ### 1. Build the Project
 Run the master bash script provided in the repo to generate the Android project structure:
 ```bash
-chmod +x build_bandit.sh
-./build_bandit.sh
+chmod +x create_minimal_epub_reader.sh
+./create_minimal_epub_reader.sh
