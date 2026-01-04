@@ -123,6 +123,7 @@ dependencies {
     implementation files('libs/epublib-core-3.1.jar')
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'org.slf4j:slf4j-android:1.7.36'
 }
 EOL
 
@@ -132,6 +133,7 @@ cat > "$SRC_DIR/AndroidManifest.xml" <<EOL
     package="com.example.minimalepubreader">
     <application
         android:label="MinimalEpubReader"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         android:hardwareAccelerated="true">
         <activity android:name=".MainActivity"
             android:exported="true">
@@ -149,6 +151,7 @@ cat > "$PACKAGE_DIR/MainActivity.kt" <<EOL
 package com.example.minimalepubreader
 
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -169,46 +172,46 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webView)
         configureWebView()
 
-        loadEpub()
-        renderCurrentChapter()
-        setupTouchNavigation()
+        try {
+            loadEpub()
+            renderCurrentChapter()
+            setupTouchNavigation()
+            Log.d("EPUB_READER", "App initialized successfully")
+        } catch (e: Exception) {
+            Log.e("EPUB_READER", "Initialization failed", e)
+        }
     }
 
     private fun configureWebView() {
-        val settings = webView.settings
-        settings.javaScriptEnabled = false
-        settings.cacheMode = WebSettings.LOAD_NO_CACHE
-        settings.defaultFontSize = 20
+        webView.settings.apply {
+            javaScriptEnabled = false
+            defaultFontSize = 20
+        }
     }
 
     private fun loadEpub() {
         val inputStream: InputStream = assets.open("book.epub")
         val book = EpubReader().readEpub(inputStream)
         spineItems = book.spine.spineReferences
+        Log.d("EPUB_READER", "Loaded book with \${spineItems.size} chapters")
     }
 
     private fun renderCurrentChapter() {
+        if (spineItems.isEmpty()) return
         val resource = spineItems[spineIndex].resource
         val html = String(resource.data)
-        val styledHtml = """
-            <html>
-            <head><style>
-                body { font-family: serif; margin: 5%; line-height: 1.6; background-color: #fff; color: #000; }
-            </style></head>
-            <body>$html</body>
-            </html>
-        """.trimIndent()
+        val styledHtml = "<html><body style='margin:5%; font-family:serif;'>\$html</body></html>"
         webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
+        Log.d("EPUB_READER", "Rendering chapter index: \$spineIndex")
     }
 
     private fun setupTouchNavigation() {
         webView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_UP) {
-                val x = event.x
                 val width = webView.width
-                if (x > width * 0.66 && spineIndex < spineItems.size - 1) {
+                if (event.x > width * 0.66 && spineIndex < spineItems.size - 1) {
                     spineIndex++; renderCurrentChapter()
-                } else if (x < width * 0.33 && spineIndex > 0) {
+                } else if (event.x < width * 0.33 && spineIndex > 0) {
                     spineIndex--; renderCurrentChapter()
                 }
             }

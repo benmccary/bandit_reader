@@ -2,6 +2,7 @@
     package="com.example.minimalepubreader">
     <application
         android:label="MinimalEpubReader"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         android:hardwareAccelerated="true">
         <activity android:name=".MainActivity"
             android:exported="true">

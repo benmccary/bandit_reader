@@ -20,7 +20,8 @@
         android:extractNativeLibs="false"
         android:hardwareAccelerated="true"
         android:label="MinimalEpubReader"
-        android:testOnly="true" >
+        android:testOnly="true"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar" >
         <activity
             android:name="com.example.minimalepubreader.MainActivity"
             android:exported="true" >
