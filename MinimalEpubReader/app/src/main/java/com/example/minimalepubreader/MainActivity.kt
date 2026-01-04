@@ -72,10 +72,29 @@ class MainActivity : AppCompatActivity() {
         webView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val width = webView.width
-                if (event.x > width * 0.66 && spineIndex < spineItems.size - 1) {
-                    spineIndex++; renderCurrentChapter()
-                } else if (event.x < width * 0.33 && spineIndex > 0) {
-                    spineIndex--; renderCurrentChapter()
+                val height = webView.height
+                val scrollY = webView.scrollY
+                val contentHeight = (webView.contentHeight * webView.scale).toInt()
+
+                if (event.x > width * 0.66) {
+                    // Try to scroll down first
+                    if (scrollY + height < contentHeight) {
+                        webView.scrollBy(0, height - 40) // -40 for a small overlap
+                    } else if (spineIndex < spineItems.size - 1) {
+                        spineIndex++
+                        renderCurrentChapter()
+                        webView.scrollTo(0, 0)
+                    }
+                } else if (event.x < width * 0.33) {
+                    // Try to scroll up first
+                    if (scrollY > 0) {
+                        webView.scrollBy(0, -(height - 40))
+                    } else if (spineIndex > 0) {
+                        spineIndex--
+                        renderCurrentChapter()
+                        // This part is tricky: we'd need to scroll to the bottom 
+                        // of the previous chapter. For now, it goes to the top.
+                    }
                 }
             }
             true
