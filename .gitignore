@@ -1,2 +1,14 @@
 assets/
 epublib-core-3.1.jar
+
+# Ignore the generated project's build artifacts
+**/build/
+**/.gradle/
+**/libs/*.jar
+**/*.iml
+.idea/
+
+# Ignore EPUBs and user-specific config
+*.epub
+local.properties
+.DS_Store
