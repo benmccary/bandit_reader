@@ -198,7 +198,7 @@ class MainActivity : AppCompatActivity() {
         progressText = findViewById(R.id.progressText)
         openButton = findViewById(R.id.openButton)
 
-        webView.settings.apply { javaScriptEnabled = false; defaultFontSize = 20 }
+        webView.settings.apply { javaScriptEnabled = false; defaultFontSize = 16 }
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
