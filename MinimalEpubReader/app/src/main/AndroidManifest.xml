@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.minimalepubreader">
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_DOCUMENTS" />
     <application
         android:label="MinimalEpubReader"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"

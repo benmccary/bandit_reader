@@ -750,6 +750,7 @@ id notification_main_column
 id notification_main_column_container
 id off
 id on
+id openButton
 id parentPanel
 id progress_circular
 id progress_horizontal
