@@ -22,7 +22,8 @@
         android:debuggable="true"
         android:extractNativeLibs="false"
         android:hardwareAccelerated="true"
-        android:label="MinimalEpubReader"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Bandit Reader"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar" >
         <activity
             android:name="com.example.minimalepubreader.MainActivity"

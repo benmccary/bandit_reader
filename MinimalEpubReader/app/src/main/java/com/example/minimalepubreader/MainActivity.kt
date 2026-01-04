@@ -19,7 +19,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var webView: WebView
     private lateinit var progressText: TextView
     private lateinit var openButton: Button
@@ -41,13 +40,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         webView = findViewById(R.id.webView)
         progressText = findViewById(R.id.progressText)
         openButton = findViewById(R.id.openButton)
-
         webView.settings.apply { javaScriptEnabled = false; defaultFontSize = 16 }
-
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 if (pendingScrollY > 0) {
@@ -56,22 +52,15 @@ class MainActivity : AppCompatActivity() {
                         pendingScrollY = 0 
                         updateStatusLine()
                     }, 200)
-                } else {
-                    updateStatusLine()
-                }
+                } else { updateStatusLine() }
             }
         }
-
         val prefs = getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE)
         prefs.getString("global_last_uri", null)?.let {
             val uri = Uri.parse(it)
             openEpub(uri, prefs.getInt("${uri}_index", 0), prefs.getInt("${uri}_scroll", 0))
         }
-
-        openButton.setOnClickListener { 
-            filePickerLauncher.launch(arrayOf("application/epub+zip", "application/octet-stream")) 
-        }
-
+        openButton.setOnClickListener { filePickerLauncher.launch(arrayOf("application/epub+zip", "application/octet-stream")) }
         setupTouchNavigation()
     }
 
@@ -86,16 +75,15 @@ class MainActivity : AppCompatActivity() {
                 currentUri = uri
                 totalBookSize = spineItems.sumOf { it.resource.data.size.toLong() }
                 renderCurrentChapter()
-                // Hide button after loading
                 toggleUI(false)
             }
         } catch (e: Exception) { Log.e("EPUB_READER", "Load failed", e) }
     }
 
     private fun toggleUI(show: Boolean) {
-        val visibility = if (show) View.VISIBLE else View.GONE
-        openButton.visibility = visibility
-        progressText.visibility = visibility
+        val v = if (show) View.VISIBLE else View.GONE
+        openButton.visibility = v
+        progressText.visibility = v
     }
 
     private fun updateStatusLine() {
@@ -108,8 +96,7 @@ class MainActivity : AppCompatActivity() {
         }
         val percent = (bytesRead.toFloat() / totalBookSize.toFloat() * 100).toInt()
         val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-        val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-        val batLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val batLevel = (getSystemService(Context.BATTERY_SERVICE) as BatteryManager).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         progressText.text = "$time  |  $batLevel%  |  $percent% Complete"
     }
 
@@ -123,35 +110,20 @@ class MainActivity : AppCompatActivity() {
     private fun setupTouchNavigation() {
         webView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_UP) {
-                val width = webView.width
-                val height = webView.height
-                val contentHeight = (webView.contentHeight * webView.scale).toInt()
-
+                val w = webView.width; val h = webView.height
+                val ch = (webView.contentHeight * webView.scale).toInt()
                 when {
-                    // LEFT 33%: Previous Page
-                    event.x < width * 0.33 -> {
-                        if (webView.scrollY > 0) {
-                            webView.scrollBy(0, -(height - 40))
-                        } else if (spineIndex > 0) {
-                            spineIndex--; renderCurrentChapter(); webView.scrollTo(0, 0)
-                        }
+                    event.x < w * 0.33 -> {
+                        if (webView.scrollY > 0) webView.scrollBy(0, -(h - 40))
+                        else if (spineIndex > 0) { spineIndex--; renderCurrentChapter(); webView.scrollTo(0, 0) }
                     }
-                    // RIGHT 33%: Next Page
-                    event.x > width * 0.66 -> {
-                        if (webView.scrollY + height < contentHeight) {
-                            webView.scrollBy(0, height - 40)
-                        } else if (spineIndex < spineItems.size - 1) {
-                            spineIndex++; renderCurrentChapter(); webView.scrollTo(0, 0)
-                        }
+                    event.x > w * 0.66 -> {
+                        if (webView.scrollY + h < ch) webView.scrollBy(0, h - 40)
+                        else if (spineIndex < spineItems.size - 1) { spineIndex++; renderCurrentChapter(); webView.scrollTo(0, 0) }
                     }
-                    // CENTER 33%: Toggle Menu
-                    else -> {
-                        val isCurrentlyVisible = openButton.visibility == View.VISIBLE
-                        toggleUI(!isCurrentlyVisible)
-                    }
+                    else -> toggleUI(openButton.visibility != View.VISIBLE)
                 }
-                updateStatusLine()
-                saveProgress()
+                updateStatusLine(); saveProgress()
             }
             true
         }
