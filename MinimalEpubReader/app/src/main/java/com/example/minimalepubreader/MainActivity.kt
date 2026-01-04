@@ -1,10 +1,13 @@
 package com.example.minimalepubreader
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -16,9 +19,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var spineIndex = 0
     private var spineItems: List<nl.siegmann.epublib.domain.SpineReference> = emptyList()
+    private var currentUri: Uri? = null
+    private var pendingScrollY = 0
 
-    private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        uri?.let { openEpub(it) }
+    // Switch to OpenDocument for persistent access
+    private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { 
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            try {
+                contentResolver.takePersistableUriPermission(it, flags)
+            } catch (e: Exception) {
+                Log.e("EPUB_READER", "Failed to take persistable permission", e)
+            }
+            
+            val prefs = getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE)
+            val savedIdx = prefs.getInt("${it}_index", 0)
+            val savedScroll = prefs.getInt("${it}_scroll", 0)
+            openEpub(it, savedIdx, savedScroll) 
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,25 +51,58 @@ class MainActivity : AppCompatActivity() {
             defaultFontSize = 20
         }
 
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                if (pendingScrollY > 0) {
+                    view?.postDelayed({
+                        view.scrollTo(0, pendingScrollY)
+                        pendingScrollY = 0
+                    }, 200)
+                }
+            }
+        }
+
+        val prefs = getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE)
+        val lastUriStr = prefs.getString("global_last_uri", null)
+        if (lastUriStr != null) {
+            val uri = Uri.parse(lastUriStr)
+            val lastIdx = prefs.getInt("${uri}_index", 0)
+            val lastScroll = prefs.getInt("${uri}_scroll", 0)
+            openEpub(uri, lastIdx, lastScroll)
+        }
+
         openButton.setOnClickListener {
-            filePickerLauncher.launch("application/epub+zip")
+            // "application/epub+zip" is the standard mime for EPUB
+            filePickerLauncher.launch(arrayOf("application/epub+zip", "application/octet-stream"))
         }
 
         setupTouchNavigation()
     }
 
-    private fun openEpub(uri: Uri) {
+    private fun openEpub(uri: Uri, savedIndex: Int, savedScroll: Int) {
         try {
             val inputStream: InputStream? = contentResolver.openInputStream(uri)
             if (inputStream != null) {
                 val book = EpubReader().readEpub(inputStream)
                 spineItems = book.spine.spineReferences
-                spineIndex = 0
+                spineIndex = if (savedIndex < spineItems.size) savedIndex else 0
+                pendingScrollY = savedScroll
+                currentUri = uri
                 renderCurrentChapter()
-                Log.d("EPUB_READER", "Loaded book with ${spineItems.size} chapters")
             }
         } catch (e: Exception) {
-            Log.e("EPUB_READER", "Failed to open EPUB", e)
+            Log.e("EPUB_READER", "Failed to load book", e)
+        }
+    }
+
+    private fun saveProgress() {
+        val uri = currentUri ?: return
+        val prefs = getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putString("global_last_uri", uri.toString())
+            putInt("${uri}_index", spineIndex)
+            putInt("${uri}_scroll", webView.scrollY)
+            apply()
         }
     }
 
@@ -60,11 +111,10 @@ class MainActivity : AppCompatActivity() {
         try {
             val resource = spineItems[spineIndex].resource
             val html = String(resource.data)
-            // Escaping $html from bash by using single quotes around EOL in the script
             val styledHtml = "<html><body style='margin:5%; font-family:serif;'>$html</body></html>"
             webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
         } catch (e: Exception) {
-            Log.e("EPUB_READER", "Render failed", e)
+            Log.e("EPUB_READER", "Render error", e)
         }
     }
 
@@ -77,25 +127,19 @@ class MainActivity : AppCompatActivity() {
                 val contentHeight = (webView.contentHeight * webView.scale).toInt()
 
                 if (event.x > width * 0.66) {
-                    // Try to scroll down first
                     if (scrollY + height < contentHeight) {
-                        webView.scrollBy(0, height - 40) // -40 for a small overlap
+                        webView.scrollBy(0, height - 40)
                     } else if (spineIndex < spineItems.size - 1) {
-                        spineIndex++
-                        renderCurrentChapter()
-                        webView.scrollTo(0, 0)
+                        spineIndex++; renderCurrentChapter(); webView.scrollTo(0, 0)
                     }
                 } else if (event.x < width * 0.33) {
-                    // Try to scroll up first
                     if (scrollY > 0) {
                         webView.scrollBy(0, -(height - 40))
                     } else if (spineIndex > 0) {
-                        spineIndex--
-                        renderCurrentChapter()
-                        // This part is tricky: we'd need to scroll to the bottom 
-                        // of the previous chapter. For now, it goes to the top.
+                        spineIndex--; renderCurrentChapter(); webView.scrollTo(0, 0)
                     }
                 }
+                saveProgress()
             }
             true
         }
