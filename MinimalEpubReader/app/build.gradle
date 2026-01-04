@@ -1,0 +1,38 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.example.minimalepubreader'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.minimalepubreader"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release { minifyEnabled false }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions { jvmTarget = '11' }
+}
+
+repositories {
+    google()
+    mavenCentral()
+    flatDir { dirs 'libs' }
+}
+
+dependencies {
+    implementation files('libs/epublib-core-3.1.jar')
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.12.0'
+}

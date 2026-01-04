@@ -1,0 +1,2 @@
+rootProject.name = 'MinimalEpubReader'
+include ':app'
