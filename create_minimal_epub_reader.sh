@@ -152,42 +152,41 @@ EOL
 cat > "$PACKAGE_DIR/MainActivity.kt" <<'EOL'
 package com.example.minimalepubreader
 
-import android.content.Context
-import android.content.Intent
+import android.content.*
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
+import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import nl.siegmann.epublib.epub.EpubReader
 import java.io.InputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
+    private lateinit var progressText: TextView
+    private lateinit var openButton: Button
     private var spineIndex = 0
     private var spineItems: List<nl.siegmann.epublib.domain.SpineReference> = emptyList()
     private var currentUri: Uri? = null
     private var pendingScrollY = 0
+    private var totalBookSize: Long = 0
 
-    // Switch to OpenDocument for persistent access
     private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { 
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            try {
-                contentResolver.takePersistableUriPermission(it, flags)
-            } catch (e: Exception) {
-                Log.e("EPUB_READER", "Failed to take persistable permission", e)
-            }
-            
+            try { contentResolver.takePersistableUriPermission(it, flags) } catch (e: Exception) {}
             val prefs = getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE)
-            val savedIdx = prefs.getInt("${it}_index", 0)
-            val savedScroll = prefs.getInt("${it}_scroll", 0)
-            openEpub(it, savedIdx, savedScroll) 
+            openEpub(it, prefs.getInt("${it}_index", 0), prefs.getInt("${it}_scroll", 0)) 
         }
     }
 
@@ -196,36 +195,33 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
-        val openButton: Button = findViewById(R.id.openButton)
+        progressText = findViewById(R.id.progressText)
+        openButton = findViewById(R.id.openButton)
 
-        webView.settings.apply {
-            javaScriptEnabled = false
-            defaultFontSize = 20
-        }
+        webView.settings.apply { javaScriptEnabled = false; defaultFontSize = 20 }
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 if (pendingScrollY > 0) {
-                    view?.postDelayed({
+                    view?.postDelayed({ 
                         view.scrollTo(0, pendingScrollY)
-                        pendingScrollY = 0
+                        pendingScrollY = 0 
+                        updateStatusLine()
                     }, 200)
+                } else {
+                    updateStatusLine()
                 }
             }
         }
 
         val prefs = getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE)
-        val lastUriStr = prefs.getString("global_last_uri", null)
-        if (lastUriStr != null) {
-            val uri = Uri.parse(lastUriStr)
-            val lastIdx = prefs.getInt("${uri}_index", 0)
-            val lastScroll = prefs.getInt("${uri}_scroll", 0)
-            openEpub(uri, lastIdx, lastScroll)
+        prefs.getString("global_last_uri", null)?.let {
+            val uri = Uri.parse(it)
+            openEpub(uri, prefs.getInt("${uri}_index", 0), prefs.getInt("${uri}_scroll", 0))
         }
 
-        openButton.setOnClickListener {
-            // "application/epub+zip" is the standard mime for EPUB
-            filePickerLauncher.launch(arrayOf("application/epub+zip", "application/octet-stream"))
+        openButton.setOnClickListener { 
+            filePickerLauncher.launch(arrayOf("application/epub+zip", "application/octet-stream")) 
         }
 
         setupTouchNavigation()
@@ -240,34 +236,40 @@ class MainActivity : AppCompatActivity() {
                 spineIndex = if (savedIndex < spineItems.size) savedIndex else 0
                 pendingScrollY = savedScroll
                 currentUri = uri
+                totalBookSize = spineItems.sumOf { it.resource.data.size.toLong() }
                 renderCurrentChapter()
+                // Hide button after loading
+                toggleUI(false)
             }
-        } catch (e: Exception) {
-            Log.e("EPUB_READER", "Failed to load book", e)
-        }
+        } catch (e: Exception) { Log.e("EPUB_READER", "Load failed", e) }
     }
 
-    private fun saveProgress() {
-        val uri = currentUri ?: return
-        val prefs = getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putString("global_last_uri", uri.toString())
-            putInt("${uri}_index", spineIndex)
-            putInt("${uri}_scroll", webView.scrollY)
-            apply()
+    private fun toggleUI(show: Boolean) {
+        val visibility = if (show) View.VISIBLE else View.GONE
+        openButton.visibility = visibility
+        progressText.visibility = visibility
+    }
+
+    private fun updateStatusLine() {
+        if (spineItems.isEmpty() || totalBookSize == 0L) return
+        var bytesRead: Long = 0
+        for (i in 0 until spineIndex) { bytesRead += spineItems[i].resource.data.size }
+        val contentHeight = (webView.contentHeight * webView.scale).toInt()
+        if (contentHeight > 0) {
+            bytesRead += (spineItems[spineIndex].resource.data.size * (webView.scrollY.toFloat() / contentHeight.toFloat())).toLong()
         }
+        val percent = (bytesRead.toFloat() / totalBookSize.toFloat() * 100).toInt()
+        val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val batLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        progressText.text = "$time  |  $batLevel%  |  $percent% Complete"
     }
 
     private fun renderCurrentChapter() {
         if (spineItems.isEmpty()) return
-        try {
-            val resource = spineItems[spineIndex].resource
-            val html = String(resource.data)
-            val styledHtml = "<html><body style='margin:5%; font-family:serif;'>$html</body></html>"
-            webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
-        } catch (e: Exception) {
-            Log.e("EPUB_READER", "Render error", e)
-        }
+        val html = String(spineItems[spineIndex].resource.data)
+        val styledHtml = "<html><body style='margin:5%; font-family:serif;'>$html</body></html>"
+        webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
     }
 
     private fun setupTouchNavigation() {
@@ -275,25 +277,46 @@ class MainActivity : AppCompatActivity() {
             if (event.action == MotionEvent.ACTION_UP) {
                 val width = webView.width
                 val height = webView.height
-                val scrollY = webView.scrollY
                 val contentHeight = (webView.contentHeight * webView.scale).toInt()
 
-                if (event.x > width * 0.66) {
-                    if (scrollY + height < contentHeight) {
-                        webView.scrollBy(0, height - 40)
-                    } else if (spineIndex < spineItems.size - 1) {
-                        spineIndex++; renderCurrentChapter(); webView.scrollTo(0, 0)
+                when {
+                    // LEFT 33%: Previous Page
+                    event.x < width * 0.33 -> {
+                        if (webView.scrollY > 0) {
+                            webView.scrollBy(0, -(height - 40))
+                        } else if (spineIndex > 0) {
+                            spineIndex--; renderCurrentChapter(); webView.scrollTo(0, 0)
+                        }
                     }
-                } else if (event.x < width * 0.33) {
-                    if (scrollY > 0) {
-                        webView.scrollBy(0, -(height - 40))
-                    } else if (spineIndex > 0) {
-                        spineIndex--; renderCurrentChapter(); webView.scrollTo(0, 0)
+                    // RIGHT 33%: Next Page
+                    event.x > width * 0.66 -> {
+                        if (webView.scrollY + height < contentHeight) {
+                            webView.scrollBy(0, height - 40)
+                        } else if (spineIndex < spineItems.size - 1) {
+                            spineIndex++; renderCurrentChapter(); webView.scrollTo(0, 0)
+                        }
+                    }
+                    // CENTER 33%: Toggle Menu
+                    else -> {
+                        val isCurrentlyVisible = openButton.visibility == View.VISIBLE
+                        toggleUI(!isCurrentlyVisible)
                     }
                 }
+                updateStatusLine()
                 saveProgress()
             }
             true
+        }
+    }
+
+    private fun saveProgress() {
+        currentUri?.let { uri ->
+            getSharedPreferences("ReaderPrefs", Context.MODE_PRIVATE).edit().apply {
+                putString("global_last_uri", uri.toString())
+                putInt("${uri}_index", spineIndex)
+                putInt("${uri}_scroll", webView.scrollY)
+                apply()
+            }
         }
     }
 }
@@ -302,18 +325,34 @@ EOL
 # Step 11: activity_main.xml
 cat > "$RES_DIR/layout/activity_main.xml" <<EOL
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
+
     <Button android:id="@+id/openButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Open Book" />
+        android:text="Open Book"
+        android:layout_alignParentTop="true" />
+
+    <TextView android:id="@+id/progressText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="4dp"
+        android:textSize="12sp"
+        android:text="Loading status..."
+        android:background="#FFFFFF"
+        android:textColor="#000000"
+        android:layout_alignParentBottom="true" />
+
     <WebView android:id="@+id/webView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-</LinearLayout>
+        android:layout_height="match_parent"
+        android:layout_below="@id/openButton"
+        android:layout_above="@id/progressText" />
+
+</RelativeLayout>
 EOL
 
 # Step 12: strings.xml
